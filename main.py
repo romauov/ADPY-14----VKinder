@@ -1,7 +1,7 @@
-from random import randrange
-import vk_api
-from vk_api.longpoll import VkLongPoll, VkEventType
-from db_adm_pass import vk_token
+# from random import randrange
+# import vk_api
+# from vk_api.longpoll import VkLongPoll, VkEventType
+# from db_adm_pass import vk_token
 from vkinder_bot import VKinderBot
 
 

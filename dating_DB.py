@@ -22,30 +22,53 @@ class DatingUser(Base):
     age_max = sq.Column(sq.Integer)
     city_name = sq.Column(sq.String)
     city_id = sq.Column(sq.Integer)
+    matchingusers = relationship('MatchingUser', secondary='dating_to_matching', back_populates='datinguser')
+    blacklistedusers = relationship('BlacklistedUser', secondary='dating_to_blacklisted', back_populates='datinguser')
 
-# class MatchingUser(Base):
-#     __tablename__ = 'matching_user'
-#
-#     matching_id = sq.Column(sq.Integer, primary_key=True)
-#     first_name = sq.Column(sq.String)
-#     last_name = sq.Column(sq.String)
-#     age = sq.Column(sq.Integer)
-#     dating_id =
-#
-# class Photos(Base):
-#     photo_id =
-#     matching_id =
-#     photo_link =
-#     likes_count =
-#
-# class BlacklistedUser(Base):
-#     __tablename__ = 'matching_user'
-#
-#     matching_id = sq.Column(sq.Integer, primary_key=True)
-#     first_name = sq.Column(sq.String)
-#     last_name = sq.Column(sq.String)
-#     age = sq.Column(sq.Integer)
-#     dating_id =
+class MatchingUser(Base):
+    __tablename__ = 'matchinguser'
+
+    matching_id = sq.Column(sq.Integer, primary_key=True)
+    first_name = sq.Column(sq.String)
+    last_name = sq.Column(sq.String)
+    age = sq.Column(sq.Integer)
+    dating_id = relationship(DatingUser)
+    photos = relationship('Photos', secondary='matching_to_photos', back_populates='matchinguser')
+
+class Photos(Base):
+    __tablename__ = 'userphotos'
+
+    photo_id = sq.Column(sq.Integer, primary_key=True)
+    matching_id = relationship(MatchingUser)
+    photo_link = sq.Column(sq.String)
+    likes_count = sq.Column(sq.Integer)
+
+class BlacklistedUser(Base):
+    __tablename__ = 'blacklisteduser'
+
+    blacklisted_id = sq.Column(sq.Integer, primary_key=True)
+    first_name = sq.Column(sq.String)
+    last_name = sq.Column(sq.String)
+    age = sq.Column(sq.Integer)
+    dating_id = relationship(DatingUser)
+
+dating_to_matching = sq.Table(
+    'dating_to_matching', Base.metadata,
+    sq.Column('dating_id', sq.Integer, sq.ForeignKey('datinguser.dating_id')),
+    sq.Column('matching_id', sq.Integer, sq.ForeignKey('matchinguser.matching_id')),
+)
+
+matching_to_photos = sq.Table(
+    'matching_to_photos', Base.metadata,
+    sq.Column('matching_id', sq.Integer, sq.ForeignKey('matchinguser.matching_id')),
+    sq.Column('photo_id'), sq.Integer, sq.ForeignKey('photos.photo_id'),
+)
+
+dating_to_blacklisted = sq.Table(
+    'dating_to_matching', Base.metadata,
+    sq.Column('dating_id', sq.Integer, sq.ForeignKey('datinguser.dating_id')),
+    sq.Column('matching_id', sq.Integer, sq.ForeignKey('blacklisteduser.blacklisted_id')),
+)
 
 
 
