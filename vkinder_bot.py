@@ -1,7 +1,7 @@
 from random import randrange
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
-from dating_DB import Session, DatingUser
+from dating_DB import Session, DatingUser, MatchingUser, Photos, BlacklistedUser
 # import sqlalchemy as sq
 # from sqlalchemy.ext.declarative import declarative_base
 # from sqlalchemy.orm import sessionmaker, relationship
@@ -92,7 +92,7 @@ class VKinderBot:
         age_max = user[0].age_max
         city_id = user[0].city_id
         offset = 0
-        sex = 1
+        sex = user[0].partners_sex
         # print(user)
         # print(age_min)
         self.show_possible_partners(event, search_token, offset, city_id, sex, age_min, age_max)
@@ -105,42 +105,47 @@ class VKinderBot:
     def show_possible_partners(self, event, search_token, offset, city_id, sex, age_min, age_max):
         # print(offset)
         r = self.users_search_request(search_token, offset, city_id, sex, age_min, age_max)
-        pprint(r)
+        # pprint(r)
         id_list = []
         for entry in r:
             # print(entry['can_access_closed'])
             if entry['can_access_closed'] == True and entry['is_closed'] == False: #возможно первая часть условия лишняя
-                set_id = (entry['first_name'] + ' ' + entry['last_name'], entry['id'])
+                set_id = (entry['first_name'], entry['last_name'], entry['id'])
                 # print(set_id)
                 id_list.append(set_id)
             else:
-                self.add_blocked()
+                continue
         # id_list = [(entry['first_name'] + ' ' + entry['last_name'], entry['id']) for entry in r]
 
         # print(id_list)
         for entry_id in id_list:
-            #тут должна быть проверка на вхождение в имеющиеся БД
-            pics = self.userpics_request(search_token, entry_id[1])
-            # pprint(pics)
-            pics_dict = {pic['sizes'][-1]['url'] : pic['likes']['count'] for pic in pics}
-            k = Counter(pics_dict)
-            top3_pics = k.most_common(3)
-            top3_pics = [pic[0] for pic in top3_pics]
-            # print(pics_dict)
-            # print(entry_id[0])
-            self.write_msg(event.user_id, entry_id[0])
-            elm_link = 'https://vk.com/id' + str(entry_id[1])
-            self.write_msg(event.user_id, elm_link)
-            for pic in top3_pics:
-                self.write_msg(event.user_id, pic)
-            # print(top3_pics)
-            request = self.wait_command()
-            if request == 'yes':
-                self.add_liked()
-                self.write_msg(event.user_id, 'ok')
+            check = self.database_check(entry_id[2])    #тут должна быть проверка на вхождение в имеющиеся БД
+            if check == True:
+                continue
             else:
-                self.add_blocked()
-                self.write_msg(event.user_id, 'it happens')
+                pics = self.userpics_request(search_token, entry_id[2])
+                # pprint(pics)
+                pics_dict = {pic['sizes'][-1]['url'] : pic['likes']['count'] for pic in pics}
+                k = Counter(pics_dict)
+                top3_pics = k.most_common(3)
+                top3_pics_links = [pic[0] for pic in top3_pics]
+                # print(pics_dict)
+                # print(entry_id[0])
+                self.write_msg(event.user_id, entry_id[0] + ' ' + entry_id[1]) #выводим имя
+                elm_link = 'https://vk.com/id' + str(entry_id[2])
+                self.write_msg(event.user_id, elm_link) #выводим ссылку
+                for pic in top3_pics_links:
+                    self.write_msg(event.user_id, pic)
+                # print(top3_pics)
+                request = self.wait_command()
+                if request == 'yes':
+                    self.add_liked(top3_pics, entry_id[2])
+                    self.write_msg(event.user_id, 'ok')
+                elif request == 'stop':
+                    return
+                else:
+                    self.add_blocked(entry_id)
+                    self.write_msg(event.user_id, 'it happens')
 
         self.write_msg(event.user_id, 'список окончен, что дальше?')
         request = self.wait_command()
@@ -186,17 +191,74 @@ class VKinderBot:
                 'sex': {sex},
                 'status': 6,
                 'age_from': {age_min},
-                'age_to': {age_max},
-                'count': 3 #НЕ ЗАБЫТЬ УБРАТЬ
+                'age_to': {age_max}
             }
         )
         r = r.json()['response']['items']
         return r
 
-    def add_liked(self):
-        pass
-    def add_blocked(self):
-        pass
+    def add_liked(self, top3_pics, matching_id):
+        session = Session()
+        user = session.query(DatingUser).all()
+        id_dater = user[0].dating_id
+
+        r = requests.get(
+            'https://api.vk.com/method/users.get',
+            params={
+                'access_token': vk_token,
+                'v': 5.89,
+                'user_ids': matching_id,
+                'fields': 'bdate, sex',
+                'name_case': 'Nom'
+            }
+        )
+        r = r.json()
+        first_name = r['response'][0]['first_name']
+        last_name = r['response'][0]['last_name']
+        try:
+            bdate = r['response'][0]['bdate']
+        except:
+            bdate = 'NA'
+        sex = r['response'][0]['sex']
+
+        liked_user = MatchingUser(matching_id=matching_id, first_name=first_name, last_name=last_name, bdate=bdate, id_dater=id_dater, sex=sex)
+        session.add(liked_user)
+        session.commit()
+
+        for photo in top3_pics:
+            pic_link = photo[0]
+            pic_likes = photo[1]
+            photo = Photos(id_matcher=matching_id, photo_link=pic_link, likes_count=pic_likes)
+            session.add(photo)
+            session.commit()
+
+    def add_blocked(self, entry_id):
+        session = Session()
+        user = session.query(DatingUser).all()
+
+        id_dater = user[0].dating_id
+        blacklisted_id = entry_id[2]
+        first_name = entry_id[0]
+        last_name =entry_id[1]
+
+        disliked_iser = BlacklistedUser(blacklisted_id=blacklisted_id, first_name=first_name, last_name=last_name, id_dater=id_dater)
+        session.add(disliked_iser)
+        session.commit()
+
+    def database_check(self, check_id):
+        session = Session()
+
+        liked_users = session.query(MatchingUser).all()
+        liked_users_list = [liked_user.matching_id for liked_user in liked_users]
+
+        disliked_users = session.query(BlacklistedUser).all()
+        disliked_users_list = [disliked_user.blacklisted_id for disliked_user in disliked_users]
+
+        if check_id in liked_users_list or check_id in disliked_users_list:
+            return True
+        else:
+            return False
+
 
     def see_liked(self, event):
         pass
@@ -222,7 +284,7 @@ class VKinderBot:
                 'access_token': vk_token,
                 'v': 5.89,
                 'user_ids': vk_id,
-                'fields': 'bdate,sex, city',
+                'fields': 'bdate, sex, city',
                 'name_case': 'Nom'
             }
         )
@@ -232,6 +294,7 @@ class VKinderBot:
         city_name = r['response'][0]['city']['title']
         city_id = r['response'][0]['city']['id']
         bdate = r['response'][0]['bdate']
+        sex = r['response'][0]['sex']
 
         self.write_msg(event.user_id, f'Укажите минимальный возраст для поиска партнёров')
         age_min = self.wait_command()
@@ -239,10 +302,21 @@ class VKinderBot:
 
         self.write_msg(event.user_id, f'Укажите максимальный возраст для поиска партнёров')
         age_max = self.wait_command()
+
+        self.write_msg(event.user_id, f'Укажите пол партнёров для поиска поиска, м или ж')
+        partners_sex = self.wait_command()
+        if partners_sex == 'м':
+            partners_sex = 2
+        elif partners_sex == 'ж':
+            partners_sex = 1
+        else:
+            self.write_msg(event.user_id, f'ничего не понял, спрошу ещё раз')
+            return self.add_new_dating_user(event)
+
         # print(age_max)
 
         user = DatingUser(dating_id=vk_id, first_name=first_name, last_name=last_name, city_name=city_name, city_id=city_id, bdate=bdate,
-                          age_min=age_min, age_max=age_max)
+                          age_min=age_min, age_max=age_max, sex=sex, partners_sex=partners_sex)
         session.add(user)
         session.commit()
 

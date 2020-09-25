@@ -22,6 +22,8 @@ class DatingUser(Base):
     age_max = sq.Column(sq.Integer)
     city_name = sq.Column(sq.String)
     city_id = sq.Column(sq.Integer)
+    sex = sq.Column(sq.Integer)
+    partners_sex = sq.Column(sq.Integer)
     matchingusers = relationship('MatchingUser', backref='DatingUser')
     blacklistedusers = relationship('BlacklistedUser', backref='DatingUser')
 
@@ -31,9 +33,10 @@ class MatchingUser(Base):
     matching_id = sq.Column(sq.Integer, primary_key=True)
     first_name = sq.Column(sq.String)
     last_name = sq.Column(sq.String)
-    age = sq.Column(sq.Integer)
+    bdate = sq.Column(sq.String)
     id_dater = sq.Column(sq.Integer,sq.ForeignKey('DatingUser.dating_id'))
     photos = relationship('Photos', backref='MatchingUser')
+    sex = sq.Column(sq.Integer)
 
 class Photos(Base):
     __tablename__ = 'Photos'
@@ -49,9 +52,8 @@ class BlacklistedUser(Base):
     blacklisted_id = sq.Column(sq.Integer, primary_key=True)
     first_name = sq.Column(sq.String)
     last_name = sq.Column(sq.String)
-    age = sq.Column(sq.Integer)
     id_dater = sq.Column(sq.Integer,sq.ForeignKey('DatingUser.dating_id'))
 
 
-# if __name__ == '__main__':
-#     Base.metadata.create_all(engine)
+if __name__ == '__main__':
+    Base.metadata.create_all(engine)
