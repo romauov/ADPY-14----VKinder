@@ -2,7 +2,6 @@ import sqlalchemy as sq
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from db_adm_pass import db_pass, db_admin
-# import psycopg2
 
 
 Base = declarative_base()

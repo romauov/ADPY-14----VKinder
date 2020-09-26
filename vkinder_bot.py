@@ -2,20 +2,13 @@ from random import randrange
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from dating_DB import Session, DatingUser, MatchingUser, Photos, BlacklistedUser
-# import sqlalchemy as sq
-# from sqlalchemy.ext.declarative import declarative_base
-# from sqlalchemy.orm import sessionmaker, relationship
 from db_adm_pass import vk_token, search_token
-# import psycopg2
 import requests
-from pprint import pprint
 from collections import Counter
 
 
-
-
-
 class VKinderBot:
+
     def __init__(self): #запускаем бота
         self.vk = vk_api.VkApi(token=vk_token)
         self.longpoll = VkLongPoll(self.vk)
@@ -33,8 +26,6 @@ class VKinderBot:
                         # return
                     elif request == 'vkinder': #запуск корневого раздела для знакомств
                         self.vkinder_init_command(event)
-                    elif request == 'повтори': #тестовый метод для ожидания ввода пользователя
-                        self.repeat(event)
                     else:
                         self.say_idk(event)
 
@@ -46,6 +37,7 @@ class VKinderBot:
         self.write_msg(event.user_id, "Пока((")
     def say_idk(self, event):
         self.write_msg(event.user_id, "Не понял вашего ответа...")
+
     def wait_command(self): #метод для получения следующего ответа пользователя
         for event in self.longpoll.listen():
             if event.type == VkEventType.MESSAGE_NEW:
@@ -53,15 +45,12 @@ class VKinderBot:
                     request = event.text
                     return request
 
-
     def vkinder_init_command(self, event): #корневой раздел сервиса знакомств
-        # Base = declarative_base()
-        # engine = sq.create_engine(f'postgresql+psycopg2://{db_admin}:{db_pass}@localhost:5432/vkinder_DB')
-        # Session = sessionmaker(bind=engine)
+
         session = Session()
         user = session.query(DatingUser).all()
 
-        if len(user) == 0: # если отсутствет инфоормация о пользователе то создаётся запис в БД
+        if len(user) == 0: # если отсутствет информация о пользователе то создаётся запись в БД
             self.add_new_dating_user(event)
             return self.vkinder_init_command(event)
         else:
@@ -73,7 +62,7 @@ class VKinderBot:
 
                         if request == "новые партнёры":
                             self.search_new_partners(event)
-                        elif request == "покажи понравивишихся":
+                        elif request == "покажи понравившихся":
                             self.see_liked(event)
                         elif request == 'покажи чс':
                             self.see_blacklisted(event)
@@ -86,6 +75,7 @@ class VKinderBot:
                             self.show_vkinder_commands(event)
 
     def search_new_partners(self, event):
+        # получение исходных данных для поиска партнёров
         session = Session()
         user = session.query(DatingUser).all()
         age_min = user[0].age_min
@@ -93,63 +83,52 @@ class VKinderBot:
         city_id = user[0].city_id
         offset = 0
         sex = user[0].partners_sex
-        # print(user)
-        # print(age_min)
-        self.show_possible_partners(event, search_token, offset, city_id, sex, age_min, age_max)
-        # self.write_msg(event.user_id, 'список окончен, что дальше?')
-        # reply = self.wait_command()
-        # if reply == 'next':
-        #     offset += 20
 
+        self.show_possible_partners(event, search_token, offset, city_id, sex, age_min, age_max)
 
     def show_possible_partners(self, event, search_token, offset, city_id, sex, age_min, age_max):
-        # print(offset)
+        #метод для отправки запроса для поиска партнёров
         r = self.users_search_request(search_token, offset, city_id, sex, age_min, age_max)
-        # pprint(r)
+
         id_list = []
         for entry in r:
-            # print(entry['can_access_closed'])
             if entry['can_access_closed'] == True and entry['is_closed'] == False: #возможно первая часть условия лишняя
                 set_id = (entry['first_name'], entry['last_name'], entry['id'])
-                # print(set_id)
                 id_list.append(set_id)
             else:
                 continue
-        # id_list = [(entry['first_name'] + ' ' + entry['last_name'], entry['id']) for entry in r]
 
-        # print(id_list)
         for entry_id in id_list:
-            check = self.database_check(entry_id[2])    #тут должна быть проверка на вхождение в имеющиеся БД
+            check = self.database_check(entry_id[2])    #проверка на вхождение в имеющиеся БД
             if check == True:
                 continue
             else:
                 pics = self.userpics_request(search_token, entry_id[2])
-                # pprint(pics)
+
                 pics_dict = {pic['sizes'][-1]['url'] : pic['likes']['count'] for pic in pics}
                 k = Counter(pics_dict)
                 top3_pics = k.most_common(3)
                 top3_pics_links = [pic[0] for pic in top3_pics]
-                # print(pics_dict)
-                # print(entry_id[0])
+
                 self.write_msg(event.user_id, entry_id[0] + ' ' + entry_id[1]) #выводим имя
                 elm_link = 'https://vk.com/id' + str(entry_id[2])
                 self.write_msg(event.user_id, elm_link) #выводим ссылку
                 for pic in top3_pics_links:
-                    self.write_msg(event.user_id, pic)
-                # print(top3_pics)
+                    self.write_msg(event.user_id, pic) #выводим ссылки на топ-3 фотографии
+
                 request = self.wait_command()
                 if request == 'yes':
-                    self.add_liked(top3_pics, entry_id[2])
+                    self.add_liked(top3_pics, entry_id[2]) #запись в БД понравивишихся
                     self.write_msg(event.user_id, 'ok')
                 elif request == 'stop':
                     return
                 else:
-                    self.add_blocked(entry_id)
+                    self.add_blocked(entry_id) #запись в БД чёрного списка
                     self.write_msg(event.user_id, 'it happens')
 
         self.write_msg(event.user_id, 'список окончен, что дальше?')
         request = self.wait_command()
-        if request == 'next':
+        if request == 'next': #после окончания списка повтор поиска со смещением выборки
             offset += 20
             return self.show_possible_partners(event, search_token, offset, city_id, sex, age_min, age_max)
         elif request == "покажи понравивишихся":
@@ -160,8 +139,7 @@ class VKinderBot:
             self.write_msg(event.user_id, "перешли в начало")
             return
 
-
-    def userpics_request(self, search_token, elm_id):
+    def userpics_request(self, search_token, elm_id): #запрос информации о фотографиях пользователя
 
         r = requests.get(
             'https://api.vk.com/method/photos.get',
@@ -175,10 +153,9 @@ class VKinderBot:
                 'photos_sizes': 'z'
             }
         )
-        # pprint(r.json())
         return r.json()['response']['items']
 
-    def users_search_request(self, search_token, offset, city_id, sex, age_min, age_max):
+    def users_search_request(self, search_token, offset, city_id, sex, age_min, age_max): #запрос информации о пользователе
 
         r = requests.get(
             'https://api.vk.com/method/users.search',
@@ -197,7 +174,7 @@ class VKinderBot:
         r = r.json()['response']['items']
         return r
 
-    def add_liked(self, top3_pics, matching_id):
+    def add_liked(self, top3_pics, matching_id): #метод для записи в БД понравившихся пользователей
         session = Session()
         user = session.query(DatingUser).all()
         id_dater = user[0].dating_id
@@ -232,7 +209,7 @@ class VKinderBot:
             session.add(photo)
             session.commit()
 
-    def add_blocked(self, entry_id):
+    def add_blocked(self, entry_id): #метод для записи в БД чёрного списка
         session = Session()
         user = session.query(DatingUser).all()
 
@@ -245,7 +222,7 @@ class VKinderBot:
         session.add(disliked_iser)
         session.commit()
 
-    def database_check(self, check_id):
+    def database_check(self, check_id): #метод для проверки на вхождение в БД
         session = Session()
 
         liked_users = session.query(MatchingUser).all()
@@ -259,22 +236,66 @@ class VKinderBot:
         else:
             return False
 
+    def see_liked(self, event): #вывод из БД понравившихся
+        session = Session()
+        liked_users = session.query(MatchingUser).all()
+        photos = session.query(Photos).all()
 
-    def see_liked(self, event):
-        pass
-    def see_blacklisted(self, event):
-        pass
-    def update_user_data(self, event):
-        pass
+        for liked_user in liked_users:
+            first_name = liked_user.first_name
+            last_name = liked_user.last_name
+            id = liked_user.matching_id
+            user_info = first_name + ' ' + last_name + ' ' + 'https://vk.com/id' + str(id)
+            self.write_msg(event.user_id, user_info)
+            for photo in photos:
+                if id == photo.id_matcher:
+                    self.write_msg(event.user_id, photo.photo_link)
+
+    def see_blacklisted(self, event): #вывод из БД чёрного списка
+        session = Session()
+
+        blacklisted_users = session.query(BlacklistedUser).all()
+        for user in blacklisted_users:
+            first_name = user.first_name
+            last_name = user.last_name
+            id = user.blacklisted_id
+            bl_user = first_name + ' ' + last_name + ' ' + 'https://vk.com/id' + str(id)
+            self.write_msg(event.user_id, bl_user)
+
+    def update_user_data(self, event): #метод для обновления информации для поиска
+        session = Session()
+        user = session.query(DatingUser).all()[0]
+        id = user.dating_id
+
+        self.write_msg(event.user_id, f'Укажите минимальный возраст для поиска партнёров')
+        age_min = self.wait_command()
+
+        self.write_msg(event.user_id, f'Укажите максимальный возраст для поиска партнёров')
+        age_max = self.wait_command()
+
+        self.write_msg(event.user_id, f'Укажите пол партнёров для поиска поиска, м или ж')
+        partners_sex = self.wait_command()
+        if partners_sex == 'м':
+            partners_sex = 2
+        elif partners_sex == 'ж':
+            partners_sex = 1
+        else:
+            self.write_msg(event.user_id, f'ничего не понял, спрошу ещё раз')
+            return self.update_user_data(event)
+
+        session.query(DatingUser).filter(DatingUser.dating_id == id).update(
+            {"age_min": age_min, "age_max": age_max, "partners_sex": partners_sex}
+        )
+        session.commit()
+        self.write_msg(event.user_id, 'информация обновлена')
+
     def show_vkinder_commands(self, event):
         self.write_msg(event.user_id, "Список доступных комманд - новые партнёры, покажи понравивишихся, покажи чс, обнови информацию, в начало")
 
     def add_new_dating_user(self, event): #метод для первоначального добавления пользователя
-        # Base = declarative_base()
-        # engine = sq.create_engine(f'postgresql+psycopg2://{db_admin}:{db_pass}@localhost:5432/vkinder_DB')
-        # Session = sessionmaker(bind=engine)
+
         session = Session()
-        # user = session.query(DatingUser).all()
+
         self.write_msg(event.user_id, 'Необходимо ввести данные для работы бота VKinder')
         vk_id = event.user_id
 
@@ -313,22 +334,9 @@ class VKinderBot:
             self.write_msg(event.user_id, f'ничего не понял, спрошу ещё раз')
             return self.add_new_dating_user(event)
 
-        # print(age_max)
-
         user = DatingUser(dating_id=vk_id, first_name=first_name, last_name=last_name, city_name=city_name, city_id=city_id, bdate=bdate,
                           age_min=age_min, age_max=age_max, sex=sex, partners_sex=partners_sex)
         session.add(user)
         session.commit()
 
         self.write_msg(event.user_id, f'Пользователь {vk_id} добавлен')
-
-    def repeat(self, event): #тестовый метод
-        self.write_msg(event.user_id, "что повторить?")
-
-        for event in self.longpoll.listen():
-            if event.type == VkEventType.MESSAGE_NEW:
-
-                if event.to_me:
-                    request = event.text
-                    self.write_msg(event.user_id, request)
-                    return
