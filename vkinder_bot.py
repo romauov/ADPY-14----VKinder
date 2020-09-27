@@ -12,7 +12,7 @@ class VKinderBot:
     def __init__(self): #запускаем бота
         self.vk = vk_api.VkApi(token=vk_token)
         self.longpoll = VkLongPoll(self.vk)
-        print('bot launched')
+        print('vkbot launched')
 
         for event in self.longpoll.listen(): #ждём комманд
             if event.type == VkEventType.MESSAGE_NEW:
@@ -36,7 +36,7 @@ class VKinderBot:
     def say_bye(self, event):
         self.write_msg(event.user_id, "Пока((")
     def say_idk(self, event):
-        self.write_msg(event.user_id, "Не понял вашего ответа...")
+        self.write_msg(event.user_id, "Не понял вашего ответа... список команд - привет, пока и vkinder")
 
     def wait_command(self): #метод для получения следующего ответа пользователя
         for event in self.longpoll.listen():
@@ -48,7 +48,8 @@ class VKinderBot:
     def vkinder_init_command(self, event): #корневой раздел сервиса знакомств
 
         session = Session()
-        user = session.query(DatingUser).all()
+        dating_id = event.user_id
+        user = session.query(DatingUser).filter(DatingUser.dating_id == dating_id).all()
 
         if len(user) == 0: # если отсутствет информация о пользователе то создаётся запись в БД
             self.add_new_dating_user(event)
@@ -68,6 +69,12 @@ class VKinderBot:
                             self.see_blacklisted(event)
                         elif request == 'обнови информацию':
                             self.update_user_data(event)
+                        elif request == 'удали понравившихся':
+                            self.drop_liked(event)
+                        elif request == 'удали чс':
+                            self.drop_blacklisted(event)
+                        elif request == 'удали пользователя':
+                            self.drop_user_data(event)
                         elif request == 'в начало':
                             self.write_msg(event.user_id, "перешли в начало")
                             return
@@ -238,8 +245,9 @@ class VKinderBot:
 
     def see_liked(self, event): #вывод из БД понравившихся
         session = Session()
-        liked_users = session.query(MatchingUser).all()
-        photos = session.query(Photos).all()
+
+        id_dater = event.user_id
+        liked_users = session.query(MatchingUser).filter(MatchingUser.id_dater == id_dater).all()
 
         for liked_user in liked_users:
             first_name = liked_user.first_name
@@ -247,6 +255,7 @@ class VKinderBot:
             id = liked_user.matching_id
             user_info = first_name + ' ' + last_name + ' ' + 'https://vk.com/id' + str(id)
             self.write_msg(event.user_id, user_info)
+            photos = session.query(Photos).filter(Photos.id_matcher == id).all()
             for photo in photos:
                 if id == photo.id_matcher:
                     self.write_msg(event.user_id, photo.photo_link)
@@ -254,7 +263,8 @@ class VKinderBot:
     def see_blacklisted(self, event): #вывод из БД чёрного списка
         session = Session()
 
-        blacklisted_users = session.query(BlacklistedUser).all()
+        id_dater = event.user_id
+        blacklisted_users = session.query(BlacklistedUser).filter(BlacklistedUser.id_dater == id_dater).all()
         for user in blacklisted_users:
             first_name = user.first_name
             last_name = user.last_name
@@ -290,7 +300,7 @@ class VKinderBot:
         self.write_msg(event.user_id, 'информация обновлена')
 
     def show_vkinder_commands(self, event):
-        self.write_msg(event.user_id, "Список доступных комманд - новые партнёры, покажи понравивишихся, покажи чс, обнови информацию, в начало")
+        self.write_msg(event.user_id, "Список доступных комманд - новые партнёры, покажи понравивишихся, покажи чс, обнови информацию, удали понравивишихся, удали чс, в начало")
 
     def add_new_dating_user(self, event): #метод для первоначального добавления пользователя
 
@@ -340,3 +350,36 @@ class VKinderBot:
         session.commit()
 
         self.write_msg(event.user_id, f'Пользователь {vk_id} добавлен')
+
+    def drop_liked(self, event):
+        session = Session()
+        id_dater = event.user_id
+        liked_users = session.query(MatchingUser).filter(MatchingUser.id_dater == id_dater).all()
+
+        for liked_user in liked_users:
+            id_matcher = liked_user.matching_id
+            session.query(Photos).filter(Photos.id_matcher == id_matcher).delete()
+
+        session.query(MatchingUser).filter(MatchingUser.id_dater == id_dater).delete()
+
+        self.write_msg(event.user_id, 'список понравившихся очищен')
+
+    def drop_blacklisted(self, event):
+        session = Session()
+        id_dater = event.user_id
+        session.query(BlacklistedUser).filter(BlacklistedUser.id_dater == id_dater).delete()
+        self.write_msg(event.user_id, 'список чс очищен')
+
+    def drop_user_data(self, event):
+        self.write_msg(event.user_id, 'вы уверены?')
+        reply = self.wait_command()
+        if reply == 'да':
+            session = Session()
+
+            self.drop_blacklisted(event)
+            self.drop_liked(event)
+            dating_id = event.user_id
+            session.query(DatingUser).filter(DatingUser.dating_id == dating_id).delete()
+            self.write_msg(event.user_id, 'данные удалены')
+        else:
+            self.write_msg(event.user_id, 'ну и хорошо')
