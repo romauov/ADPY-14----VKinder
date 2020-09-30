@@ -10,9 +10,11 @@ from collections import Counter
 class VKinderBot:
 
     def __init__(self): #запускаем бота
+        print('vkbot launched')
+
+    def start(self):
         self.vk = vk_api.VkApi(token=vk_token)
         self.longpoll = VkLongPoll(self.vk)
-        print('vkbot launched')
 
         for event in self.longpoll.listen(): #ждём комманд
             if event.type == VkEventType.MESSAGE_NEW:
@@ -28,6 +30,7 @@ class VKinderBot:
                         self.vkinder_init_command(event)
                     else:
                         self.say_idk(event)
+
 
     def write_msg(self, user_id, message):
         self.vk.method('messages.send', {'user_id': user_id, 'message': message, 'random_id': randrange(10 ** 7), })
