@@ -5,6 +5,7 @@ from dating_DB import Session, DatingUser, MatchingUser, Photos, BlacklistedUser
 from db_adm_pass import vk_token, search_token
 import requests
 from collections import Counter
+from dbutils import database_check
 
 
 class VKinderBot:
@@ -109,7 +110,7 @@ class VKinderBot:
                 continue
 
         for entry_id in id_list:
-            check = self.database_check(entry_id[2])    #проверка на вхождение в имеющиеся БД
+            check = database_check(entry_id[2])    #проверка на вхождение в имеющиеся БД
             if check == True:
                 continue
             else:
@@ -231,20 +232,6 @@ class VKinderBot:
         disliked_iser = BlacklistedUser(blacklisted_id=blacklisted_id, first_name=first_name, last_name=last_name, id_dater=id_dater)
         session.add(disliked_iser)
         session.commit()
-
-    def database_check(self, check_id): #метод для проверки на вхождение в БД
-        session = Session()
-
-        liked_users = session.query(MatchingUser).all()
-        liked_users_list = [liked_user.matching_id for liked_user in liked_users]
-
-        disliked_users = session.query(BlacklistedUser).all()
-        disliked_users_list = [disliked_user.blacklisted_id for disliked_user in disliked_users]
-
-        if check_id in liked_users_list or check_id in disliked_users_list:
-            return True
-        else:
-            return False
 
     def see_liked(self, event): #вывод из БД понравившихся
         session = Session()
